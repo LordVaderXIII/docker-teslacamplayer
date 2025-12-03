@@ -1,0 +1,318 @@
+<html>
+    <head>
+        <style>
+            .video-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 10px;
+            }
+            .video-grid video {
+                width: 100%;
+                height: auto;
+            }
+            div {
+                border:1px solid;
+                align-content: center;
+            }
+            div.title {
+                font-size: 25px;
+                text-align: center;
+            }
+            div.title>span {
+                color: red;
+            }
+            div>div.global-controls{
+                display: inline-block;
+            }
+            .play_speed {
+                display: inline-block;
+                padding: 5px;
+                text-align: center;
+            }
+            .controls {
+                display: inline-block;
+                padding: 5px;
+                text-align: center;
+            }
+            video {
+                width: 600px;
+                height: 450px;
+            }
+            table tr td {
+                border:1px solid;
+                text-align: center;
+            }
+            textarea {
+                width: 100%;
+            }
+            div.readme {
+                padding: 5px;
+            }
+            code {
+                background:lightgrey
+            }
+        </style>
+    </head>
+    <body>
+        <div>
+            <div>
+                Browse Loaded Clips: <select class="date-select"><option>- - - - - -</option></select>
+            </div>
+        </div>
+
+        <div class="global-controls">
+            <div class="export-controls">
+                <span>Export Clip</span><br/>
+                <label for="start-time">Start:</label>
+                <input type="range" id="start-time" name="start-time" min="0" max="100" value="0">
+                <span id="start-time-label">0s</span>
+                <br>
+                <label for="end-time">End:</label>
+                <input type="range" id="end-time" name="end-time" min="0" max="100" value="100">
+                <span id="end-time-label">100s</span>
+                <br>
+                <button id="export-button">Export</button>
+            </div>
+            <div class="play_speed">
+                <span>Play Speed</span><br/>
+                <button onclick="playRate(0.5)">0.5x</button>
+                <button onclick="playRate(1)">1x</button>
+                <button onclick="playRate(2)">2x</button>
+                <button onclick="playRate(3)">3x</button>
+                <button onclick="playRate(8)">8x</button>
+            </div>
+            <div class="controls">
+                <span>General Controls</span><br/>
+                <button class="previous">&lt;&lt;PREV&lt;&lt;</button>
+                <button class="skip" onclick="skipTo(-5)">-5</button>
+                <button class="skip" onclick="skipTo(-3)">-3</button>
+                <button onclick="playPause()">PLAY/PAUSE</button>
+                <button class="skip" onclick="skipTo(3)">3</button>
+                <button class="skip" onclick="skipTo(5)">5</button>
+                <button class="next">&gt;&gt;NEXT&gt;&gt;</button>
+                <input checked type="checkbox" name="autoplay"/>Autoplay
+            </div>
+        </div>
+		<div>
+            <div class="title">
+                <span>No Videos Loaded</span>
+            </div>
+            <div id="video-grid" class="video-grid">
+                </div>
+        </div>
+	</body>
+
+<script>
+	var carouselIndex;
+	var selectItemIndex;
+	var files;
+
+    var playbackRate = 1
+	var playPauseFlag = true;
+
+    var carousel = []
+    var title = document.querySelector("div.title")
+    var videoGrid = document.getElementById("video-grid")
+    var next = document.querySelector("button.next")
+    var previous = document.querySelector("button.previous")
+    var setVideos = document.querySelector("button.setVideos")
+
+    var dateSelector = document.querySelector("select.date-select")
+
+    var skip = document.querySelector("button.skip")
+
+	window.onload = function() {
+        fetch('/api/clips')
+            .then(response => response.json())
+            .then(clipGroups => {
+                carousel = clipGroups;
+                populateDropdown(clipGroups);
+                if (clipGroups.length > 0) {
+                    loadVideos(0);
+                } else {
+                    title.innerHTML = "<span>No clips found. Make sure your /clips volume is mounted correctly.</span>";
+                }
+            });
+    };
+
+    function populateDropdown(clipGroups) {
+        dateSelector.innerHTML = '';
+        clipGroups.forEach((group, index) => {
+            const option = document.createElement('option');
+            const fileName = group[0];
+            const timestamp = fileName.substring(fileName.lastIndexOf('/') + 1, fileName.lastIndexOf('/') + 20);
+            option.innerText = timestamp;
+            option.value = index;
+            dateSelector.appendChild(option);
+        });
+    }
+    dateSelector.addEventListener("change", function(e){
+        carouselIndex = parseInt(e.target.options[e.target.selectedIndex].value)
+        loadVideos(carouselIndex)
+    })
+
+    function loadVideos(index) {
+        videoGrid.innerHTML = ''; // Clear existing videos
+        const fileGroup = carousel[index];
+        const timestamp = fileGroup[0].substring(fileGroup[0].lastIndexOf('/') + 1, fileGroup[0].lastIndexOf('/') + 20);
+        title.innerHTML = `<span>${timestamp}</span>`;
+
+        fileGroup.forEach((videoPath, i) => {
+            const video = document.createElement('video');
+            video.src = `/video/${videoPath}`;
+            video.controls = true;
+
+            if (i === 0) {
+                video.addEventListener('loadedmetadata', function() {
+                    const duration = Math.floor(video.duration);
+                    startTimeSlider.max = duration;
+                    endTimeSlider.max = duration;
+                    endTimeSlider.value = duration;
+                    startTimeLabel.textContent = "0s";
+                    endTimeLabel.textContent = duration + "s";
+                });
+            }
+
+            video.controlsList = "play pause";
+            const camera = videoPath.split('-').pop().replace('.mp4', '');
+            const p = document.createElement('p');
+            p.innerText = camera;
+            const container = document.createElement('div');
+            container.appendChild(p);
+            container.appendChild(video);
+            videoGrid.appendChild(container);
+        });
+
+        // Re-add event listeners to the new video elements
+        addVideoEventListeners();
+    }
+
+    function playVideos() {
+        let videos = document.querySelectorAll("#video-grid video");
+        videos.forEach(video => {
+            video.play();
+            video.playbackRate = playbackRate;
+        });
+    }
+
+    function playRate(rate) {
+        playbackRate = rate;
+        let videos = document.querySelectorAll("#video-grid video");
+        videos.forEach(video => {
+            video.playbackRate = playbackRate;
+        });
+    }
+
+    function pauseVideos() {
+        let videos = document.querySelectorAll("#video-grid video");
+        videos.forEach(video => {
+            video.pause();
+        });
+    }
+
+    function playPause() {
+        if (playPauseFlag) {
+            pauseVideos();
+        } else {
+            playVideos();
+        }
+        playPauseFlag = !playPauseFlag;
+    }
+
+    function addVideoEventListeners() {
+        let videos = document.querySelectorAll("#video-grid video");
+        videos.forEach(v => {
+            v.addEventListener('play', () => {
+                playVideos();
+                playPauseFlag = true;
+            });
+            v.addEventListener('pause', () => {
+                pauseVideos();
+                playPauseFlag = false;
+            });
+            v.addEventListener('timeupdate', (e) => {
+                const masterTime = e.target.currentTime;
+                videos.forEach(otherVideo => {
+                    if (otherVideo !== e.target && Math.abs(otherVideo.currentTime - masterTime) > 0.2) {
+                        otherVideo.currentTime = masterTime;
+                    }
+                });
+            });
+            v.addEventListener('ended', (e) => {
+                if (e.target === videos[0] && document.querySelector("input[name=autoplay]").checked) {
+                    next.click();
+                }
+            });
+        });
+    }
+
+    function skipTo(seconds){
+        let videos = document.querySelectorAll("video");
+        videos.forEach(video => {
+            video.currentTime += seconds
+        })
+    }
+
+    var carouselIndex = 0
+
+    var startTimeSlider = document.getElementById("start-time");
+    var endTimeSlider = document.getElementById("end-time");
+    var startTimeLabel = document.getElementById("start-time-label");
+    var endTimeLabel = document.getElementById("end-time-label");
+    var exportButton = document.getElementById("export-button");
+
+    startTimeSlider.addEventListener("input", function() {
+        startTimeLabel.textContent = this.value + "s";
+    });
+
+    endTimeSlider.addEventListener("input", function() {
+        endTimeLabel.textContent = this.value + "s";
+    });
+
+    exportButton.addEventListener("click", function() {
+        const startTime = startTimeSlider.value;
+        const endTime = endTimeSlider.value;
+        const fileGroup = carousel[carouselIndex];
+
+        const fileNames = fileGroup.map(file => file);
+
+        fetch('/export', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                startTime,
+                endTime,
+                fileNames
+            })
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'exported_clip.mp4';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error exporting clip:', error));
+    });
+
+    next.addEventListener("click", function(){
+        if (carouselIndex < carousel.length - 1) {
+            carouselIndex++;
+            loadVideos(carouselIndex);
+        }
+    })
+
+    previous.addEventListener("click", function(){
+        if (carouselIndex > 0) {
+            carouselIndex--;
+            loadVideos(carouselIndex);
+        }
+    })
+</script>
+</html>
