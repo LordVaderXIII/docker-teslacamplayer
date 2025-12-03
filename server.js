@@ -119,7 +119,7 @@ app.get('/api/clips', (req, res) => {
 });
 
 // Video streaming endpoint
-app.get('/video/(.*)', (req, res) => {
+app.get('/video/*', (req, res) => {
     const videoPath = path.join('/clips', req.params[0]);
     const clipsDir = path.resolve('/clips');
     const requestedPath = path.resolve(videoPath);
